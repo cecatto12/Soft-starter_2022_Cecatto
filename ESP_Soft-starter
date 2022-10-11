@@ -1,0 +1,358 @@
+#include "esp_attr.h"
+#include <NTPClient.h>
+#include <WiFi.h>
+#include "time.h"
+#include <Arduino.h>
+#include <string.h>
+#include <BluetoothSerial.h>
+#include <iostream>
+#include <cstring>
+
+/*DEFINO MINHAS BIBLIOTECAS*/
+
+#define RXp2 16
+#define TXp2 17
+#define conexao 5
+#define liga 4
+/*DEFINO MEUS PINOS*/
+/*
+#if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
+#error Bluetooth is not enabled! Please run `make menuconfig` to and enable it
+#endif
+
+BluetoothSerial SerialBT;
+
+*/
+
+
+struct BOTAO 
+{
+  const uint8_t PIN;
+  uint32_t Num_Apertos;
+  bool apertado;
+};
+/*CRIO UMA STRUCT PARA SALVAR MINHAS VARIÁVEIS E PODER CHEGAR NELAS EM QUALQUER PONTO DO CÓDIGO*/
+
+BOTAO botao1 = {18, 0, false};/*DOU OS PARAMETROS DO BOTAO*/
+
+char C1,C2,C3;/*VARIÁVEIS PARA CONFERIR SE ESTÁ NA HORA DE LIGAR. */ /*SINALIZADOR PRO ARM LIGAR*/
+int dia,hora,minuto,horades,minutodes,segundo,l=0,auxhora,auxminuto,auxstart,auxligades,ligado,horarede,minutorede,acionaliga,acionadesliga,auxpino4;/*Talvez tenha que dar um jeito de reter essas variáveis*/
+const char* ssid     = "xicara"; /*configurar aqui o xicara. podemos trabalhar com uma rede wifi configurável provavelmente, esquematizar isso depois que garantir funcionamento*/
+const char* password = "ueniri2016"; /*ueniri2016*/
+
+const long utcOffsetInSeconds=-10800; /*grazadeus não tem mais horário de verão. Ta utc -3 fixo. Padrão brasília, se tivesse horário de verão precisaríamos pegar o mês também, acho
+que pelo site é tranquilo*/
+
+const char* daysOfTheWeek [7]={"Segunda","Terca","Quarta","Quinta","Sexta","Sábado","Domingo"};/*Declaro meus dias da semana, dizendo que eles são invariáveis*/
+
+WiFiUDP ntpUDP; /*chamo o protocolo*/
+NTPClient timeClient(ntpUDP, "pool.ntp.org", utcOffsetInSeconds); /*chamo o cliente*/
+/*
+void IRAM_ATTR funcao_ISR() /*Interrupção, configurado para usar a ram, pois ela é mais rápida. IRAM_ATTR faz com que seja utilizado a ram para armazenar essa funcão. O ISR é necessario tbm*/
+/*{
+    botao1.Num_Apertos++;/*isso aqui é baseado na quantidade de apertos do botão azul do mano arm. se pá que não precisa dessa void na real. Mas usart é uma puta*/
+/*  botao1.apertado = true;/*provavelmente sem necessidade*/
+//}/
+
+
+void setup(){
+ 
+  Serial.begin(115200); /*inicializo o bau rate para que ele possa receber os dados quando ligar*/
+  pinMode(botao1.PIN, INPUT_PULLUP); /*defino o botão de configuração do horário. novamente, se pá que não precisa usar. seria por serial vindo do arm*/
+  pinMode(conexao, OUTPUT);/*Esse é o pino de flag, que o arm vai ler para saber se tem um esp conectado a ele, se tem, ele vai requisitar os dados do esp, se não, funciona como uma fofo comum*/
+  pinMode (liga,OUTPUT);
+
+// SerialBT.begin("ESPiao"); /*nome do dispositivo bluetooth*/
+  
+  
+  //attachInterrupt(botao1.PIN, funcao_ISR, FALLING); /*interrupção para quando cair o o sinal vindo do arm(disparado com o aperto do botão azul) o esp reconheça e faça a soma. Para depois poder
+  //devidamente receber os dados de tempo, para enviar pro arm do coleguinha, e o arm do coleguinha substituir os valores.*/
+  Serial2.begin(9600, SERIAL_8N1, RXp2, TXp2);/*comunicação com o arm aqui, lembrar de colocar 9600 de frequencia de careca lá*/
+  WiFi.begin(ssid, password);/*realizo conexão*/
+
+  while ( WiFi.status() != WL_CONNECTED ) 
+  {
+    delay ( 500 );
+    Serial.print ( "." ); /*sinalização de que está ruim o fuzzy set, ana está em lá rede*/
+  }
+
+  timeClient.begin();/*inicio a função de receber tempo do site*/
+}
+
+void loop() 
+{
+  digitalWrite (conexao,HIGH); /*Digo pro pino de conexão iniciar como 1, aí o arm pode ler o pino e entender que tem um esp*/
+/*  put your main code here, to run repeatedly:*/
+timeClient.update(); /*pego da internet no começo do código o tempo*/
+/*
+  Serial.print(daysOfTheWeek[timeClient.getDay()]);/*pega dia. É ´possível que necessite do teste ver se esta livre*/ 
+ /* Serial.print(", ");
+  Serial.print(timeClient.getHours()); /*pega hora*/
+  /*Serial.print(":");
+  Serial.print(timeClient.getMinutes()); /*pega minuto*/
+  /*Serial.print(":");
+  Serial.println(timeClient.getSeconds());/*pega segundo*/
+ 
+  
+  delay(200);/*Delay a ser testado, pode acontecer de pularmos um segundo. O que se torna fatal. Testar com 1 segundo algumas muitas vezes para garantir a funcionalidade perfeita. caso não 
+  ocorra. Modificar para ou um número menor, ou ver como faz para sobreescrever no cmd*/
+
+  /*
+   *
+  
+  switch (botao1.Num_Apertos) /*ler o pino de flag que passou a etapa de inserção de valor. Se o valor for 1, é porque tem que inserir a hora, 2 os minutos, 3 o segundo. atribui o valor
+  a variável respectiva, para posteriormente fazer o teste, se passar no test envia a flag liga para um pino do arm, se o arm receber 1 no pino, deve ligar a softstarter
+  da também para se não funcionar assim implementar lógica de ifs, para trabalhar só com variável booleana, e ter uma variável atrelada ao arm, para o arm dizer que já ligou hoje
+  e se já ligou hoje não pode ligar de novo. essa variável precisaria ser de retenção, o que é problemático.*/
+/*  {
+    case 1:
+      Serial2.readString().toCharArray(C1,2); /*leio a string que vem pela serial, e converto ela para char, e embaixo converto para inteiro. Testar de pode ser feito tudo na mesma linha acredito que sim*/
+/*      hora   =atoi(C1);
+    break;
+    case 2:
+      Serial2.readString().toCharArray(C2,2);
+      minuto =atoi(C2);
+    break;
+    case 3:
+      Serial2.readString().toCharArray(C3,2);
+      segundo=atoi(C3);
+    break;
+  }
+*/
+if((auxstart==0 && l==0) || (auxstart==1 && l==2))
+{
+              Serial.print('\n');
+              if(l==0)
+              {
+                          Serial.print("Insira a hora de inicio");
+                          Serial.print('\n');
+                          Serial.print("Hora: ");
+                          auxstart=1;
+              }
+              if(l==2)
+              {
+                          Serial.print("Insira a hora de desligamento");
+                          Serial.print('\n');
+                          Serial.print("Hora: ");
+                          auxstart=2;
+              }
+}
+if(l==0)
+{
+
+                      while(Serial.available())
+                      {
+   
+                      
+                      
+                                        auxhora=Serial.parseInt();
+
+                                        if(l==0)
+                                        {
+                                          hora=auxhora;
+                                    
+                                        if(auxhora>23)
+                                        {
+                                          auxhora=0;
+                                          hora=24;
+                                        }
+                                        else if(auxhora<0)
+                                        {
+                                          auxhora=auxhora*(-1);
+                                        }
+                                        if(auxhora<10)
+                                        {
+                                          Serial.print("0");
+                                        }
+                                        Serial.print(auxhora);
+                                        Serial.print(":");
+                                        Serial.flush();
+                                        }
+                      
+                                        l=1;
+                      }
+}
+  if(l==1)
+  {
+              while(Serial.available())
+              {
+                auxminuto=Serial.parseInt();
+              if(l==1)
+              {
+                                  minuto=auxminuto;
+                                  if(auxminuto<10)
+                                  {
+                                    Serial.print("0");
+                                  }
+                                  if(auxminuto>59)
+                                  {
+                                    auxminuto=00;
+                                    minuto=00;
+                                  }
+                                  else if(auxminuto<0)
+                                  {
+                                    auxminuto=auxminuto*(-1);
+                                  }
+                                 Serial.print(auxminuto); 
+                                  l=2;      
+              }                                 
+              }
+  }
+
+  if(l==2)
+{
+
+                      while(Serial.available())
+                      {
+   
+                      
+                      
+                                        auxhora=Serial.parseInt();
+
+                                        if(l==2)
+                                        {
+                                          horades=auxhora;
+                                    
+                                        if(auxhora>23)
+                                        {
+                                          auxhora=0;
+                                          horades=24;
+                                        }
+                                        else if(auxhora<0)
+                                        {
+                                          auxhora=auxhora*(-1);
+                                        }
+                                        if(auxhora<10)
+                                        {
+                                          Serial.print("0");
+                                        }
+                                        Serial.print(auxhora);
+                                        Serial.print(":");
+                                        Serial.flush();
+                                        }
+                      
+                                        l=3;
+                      }
+}
+  if(l==3)
+  {
+              while(Serial.available())
+              {
+                auxminuto=Serial.parseInt();
+              if(l==3)
+              {
+                                  minutodes=auxminuto;
+                                  if(auxminuto<10)
+                                  {
+                                    Serial.print("0");
+                                  }
+                                  if(auxminuto>59)
+                                  {
+                                    auxminuto=00;
+                                    minutodes=00;
+                                  }
+                                  else if(auxminuto<0)
+                                  {
+                                    auxminuto=auxminuto*(-1);
+                                  }
+                                 Serial.print(auxminuto); 
+                                  l=4;      
+              }                                 
+              }
+  }
+/*
+Serial.print("minuto ");
+minuto=toInt(Serial.read());
+//minuto=atoi(C2);
+Serial.print("segundo ");
+segundo=toInt(Serial.read());
+//segundo=atoi(C3);
+*/
+horarede=timeClient.getHours();
+minutorede=timeClient.getMinutes();
+
+
+
+ if(l==4)
+ {
+if(hora<horarede)
+{
+  acionaliga=1;
+}
+else if(hora!=horarede)
+{
+  acionaliga=0;
+}
+else if(minuto<=minutorede)
+{
+  acionaliga=1;
+}
+
+ if(horades<horarede)
+                          {
+                            acionadesliga=1;
+                          }
+                          else if(horades!=horarede)
+                          {
+                            acionadesliga=0;
+                          }
+                          else if(minutodes<=minutorede)
+                          {
+                            acionadesliga=1;
+                          }
+
+
+  
+                        if(auxligades==0 && acionaliga==1)
+                        {
+                         Serial.print('\n');
+                         Serial.print ("ligou");
+                         Serial.print('\n');
+                         auxligades=1;
+                         ligado=1;
+                        }
+            
+                        if(auxligades==1 && ligado==1 && acionadesliga==1)
+                        {
+                         Serial.print ("desligou");
+                         Serial.print('\n');
+                          auxligades=2;
+                        }
+ }
+
+ if(auxligades==1 && auxpino4==0)
+ {
+                digitalWrite (liga,HIGH);
+                delay(500);
+                digitalWrite (liga,LOW);
+                auxpino4=1;
+ }
+ 
+ if(auxligades==2 && auxpino4==1)
+ {
+                digitalWrite (liga,HIGH);
+                delay(500);
+                digitalWrite (liga,LOW);
+                reset();
+  }
+
+
+//   SerialBT.println (true);
+//*
+
+   // SerialBT.println (false);
+    
+    /*enviar via serial*/
+
+}
+
+void reset()
+{
+  l=0;
+  ligado=0;
+  acionaliga=0;
+  acionadesliga=0;
+  auxpino4=0;
+  auxstart=0;
+  auxligades=0;
+}
